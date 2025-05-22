@@ -2,7 +2,7 @@ import json
 import re
 import os
 
-URLS_FILE = 'custom_urls.json'
+URLS_FILE = 'tampung_urls.json'
 
 def load_url():
     if not os.path.exists(URLS_FILE):

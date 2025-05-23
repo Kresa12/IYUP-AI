@@ -1,32 +1,38 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asisten AI Berbasis Web</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IYUP - Web Assistant</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="chat-container">
-        <h1>IYUP</h1>
-        <p>I Your Partner</p>
-        <div id="chat-box"></div>
-        <div class="input-area">
-            <!-- <input type="text" id="user-input" placeholder="Ketik perintahmu..."> -->
-            <!-- <button id="send-btn">Kirim</button> -->
-            <button id="mic-btn">Mikrofon</button>
-        </div>
+  <div class="container">
+    <header>
+      <h1>IYUP</h1>
+      <p>I Your Partner</p>
+    </header>
 
-        <hr style="margin: 20px 0;"> <div class="url-manager">
-            <h2>Manajemen URL</h2>
-            <p>Tambahkan URL favorit agar asisten tidak salah dengar.</p>
-            <input type="text" id="url-name-input" placeholder="Nama Website (misal: Google)">
-            <input type="text" id="url-address-input" placeholder="Alamat URL (misal: https://www.google.com)">
-            <button id="add-url-btn">Tambah URL</button>
-            <p id="url-feedback"></p>
-        </div>
-    </div>
+    <main>
+      <div id="chat-box" class="chat-box"></div>
+      <div class="input-area">
+        <button id="mic-btn">🎤 Mikrofon</button>
+      </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+      <hr />
+
+      <section class="url-manager">
+        <h2>Manajemen URL</h2>
+        <input type="text" id="url-name-input" placeholder="Nama Website (misal: Google)">
+        <input type="text" id="url-address-input" placeholder="Alamat URL (misal: https://www.google.com)">
+        <button id="add-url-btn">Tambah URL</button>
+        <p id="url-feedback"></p>
+      </section>
+    </main>
+  </div>
+
+  <!-- Perhatikan urutan di bawah -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

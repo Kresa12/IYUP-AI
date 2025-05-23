@@ -1,206 +1,173 @@
-// script.js
-// const userInput = document.getElementById('user-input');
-const sendBtn = document.getElementById('send-btn');
-const micBtn = document.getElementById('mic-btn');
-const chatBox = document.getElementById('chat-box');
+window.addEventListener("DOMContentLoaded", () => {
+  const socket          = io();
 
-// Elemen untuk manajemen URL
-const urlNameInput = document.getElementById('url-name-input');
-const urlAddressInput = document.getElementById('url-address-input');
-const addUrlBtn = document.getElementById('add-url-btn');
-const urlFeedback = document.getElementById('url-feedback');
+  const chatBox         = document.getElementById("chat-box");
+  const micBtn          = document.getElementById("mic-btn");
+  const urlNameInput    = document.getElementById("url-name-input");
+  const urlAddressInput = document.getElementById("url-address-input");
+  const addUrlBtn       = document.getElementById("add-url-btn");
+  const urlFeedback     = document.getElementById("url-feedback");
 
-// --- MODIFIKASI UNTUK TOGGLE MIKROFON DAN PERBAIKAN BUG ---
-let recognition = null;
-let isListening = false;
-let lastProcessedCommand = ''; // Variabel untuk menyimpan perintah terakhir yang diproses
+  // ================== UI helper ==================
+  function appendMessage(sender, msg) {
+    const div = document.createElement("div");
+    div.className  = sender.toLowerCase();
+    div.textContent = `${sender}: ${msg}`;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
 
-// Fungsi untuk inisialisasi SpeechRecognition
-function initializeSpeechRecognition() {
-    // if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    //     alert("Maaf, browser Anda tidak mendukung Web Speech API untuk input suara.");
-    //     return null;
-    // }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new SpeechRecognition();
-    rec.lang = 'id-ID';
-    rec.interimResults = false; // Hanya berikan hasil final
-    rec.maxAlternatives = 1;
-    rec.continuous = true; // Penting: Mode continuous agar tetap mendengarkan
+  // ================== SpeechRecognition (Chrome) ==================
+  let recognition = null;
+  let usingBrowserSTT = false;
 
-    // Event saat hasil pengenalan suara tersedia
-    rec.onresult = (event) => {
-        // Ambil hasil yang paling relevan (resultKey = 0)
-        // dan transcript dari alternatif pertama (alternativeKey = 0)
-        const transcript = event.results[event.results.length - 1][0].transcript.trim();
+  function initBrowserSTT() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
 
-        // Debugging: lihat apa yang didengar
-        // console.log("Dengar:", transcript);
+    const rec = new SR();
+    rec.lang = "id-ID";
+    rec.continuous = true;
+    rec.interimResults = false;
 
-        // Hanya proses jika ada transcript dan berbeda dari perintah terakhir
-        // if (transcript && transcript.toLowerCase() !== lastProcessedCommand.toLowerCase()) {
-        //     userInput.value = transcript; // Tampilkan di input
-        //     lastProcessedCommand = transcript; // Simpan sebagai perintah terakhir
-        //     sendCommand(); // Kirim perintah
-        // }
-
-        if (transcript && transcript.toLowerCase() !== lastProcessedCommand.toLowerCase()) {
-            // Kita tidak lagi menampilkan di input teks, jadi baris ini dihapus
-            // userInput.value = transcript;
-
-            lastProcessedCommand = transcript; // Simpan sebagai perintah terakhir
-            
-            // --- INI PERBAIKAN PENTING ---
-            // Panggil sendCommand dan TERUSKAN `transcript` sebagai argumen
-            sendCommand(transcript); 
-            // --- AKHIR PERBAIKAN PENTING ---
-        }
+    rec.onresult = e => {
+      const txt = e.results[e.results.length - 1][0].transcript.trim();
+      if (txt) sendCommand(txt);
     };
-
-    // Event saat terjadi error pada pengenalan suara
-    rec.onerror = (event) => {
-        // console.error('Speech recognition error', event);
-        if (event.error === 'no-speech' || event.error === 'audio-capture') {
-            // Ini normal jika tidak ada suara, jangan terlalu banyak error feedback
-            // Atau jika mikrofon terputus.
-        } else {
-            // Beri feedback error hanya jika memang sedang mendengarkan
-            if (isListening) {
-                appendMessage('Asisten', 'Maaf, aku tidak bisa mendengar atau mengenali suara Anda. Mohon ulangi.');
-            }
-        }
-        // Jangan panggil stopListening() di sini jika kita ingin continuous listening.
-        // `onend` akan dipanggil setelah `onerror`.
+    rec.onerror = e => {
+      appendMessage("Asisten", `Error: ${e.error}`);
+      stopSTT();
     };
-
-    // Event saat proses pengenalan suara berakhir (misal karena jeda terlalu lama, atau dihentikan manual)
     rec.onend = () => {
-        if (isListening) { // Jika mikrofon masih seharusnya aktif, mulai lagi mendengarkan
-            // console.log("Recognition ended, restarting...");
-            // Tambahkan sedikit jeda sebelum memulai ulang untuk menghindari loop cepat
-            setTimeout(() => {
-                if (isListening) { // Pastikan masih ingin mendengarkan setelah jeda
-                    recognition.start();
-                }
-            }, 500); // Jeda 500ms (0.5 detik)
-        } else {
-            // console.log("Recognition stopped manually.");
-            micBtn.textContent = 'Mikrofon';
-            micBtn.classList.remove('listening');
-        }
+      if (usingBrowserSTT) rec.start();   // restart continuous
+      micBtn.textContent = usingBrowserSTT ? "🎙️ Mendengarkan" : "🎙️ Mikrofon";
     };
     return rec;
-}
+  }
 
-// Fungsi untuk memulai mendengarkan
-function startListening() {
-    if (!recognition) {
-        recognition = initializeSpeechRecognition();
-        if (!recognition) return;
+  function startSTT() {
+    if (!recognition) recognition = initBrowserSTT();
+    if (recognition) {
+      usingBrowserSTT = true;
+      recognition.start();
+      micBtn.textContent = "🎙️ Mendengarkan";
+      appendMessage("Asisten", "Mendengarkan perintah...");
+      return;
     }
-    isListening = true;
-    micBtn.textContent = 'Mendengarkan';
-    micBtn.classList.add('listening');
-    recognition.start();
-    appendMessage('Asisten', 'Mendengarkan perintah...');
-    lastProcessedCommand = ''; // Reset perintah terakhir saat mulai mendengarkan
-}
+    startRecording();    // fallback ke server-side
+  }
 
-// Fungsi untuk menghentikan mendengarkan
-function stopListening() {
-    if (recognition && isListening) {
-        isListening = false;
-        recognition.stop();
-        // console.log("Microphone stopped.");
-    }
-    micBtn.textContent = 'Mikrofon';
-    micBtn.classList.remove('listening');
-}
-// --- AKHIR MODIFIKASI TOGGLE MIKROFON DAN PERBAIKAN BUG ---
+  function stopSTT() {
+    usingBrowserSTT = false;
+    if (recognition) try { recognition.stop(); } catch {}
+    stopRecording();     // pastikan mic mati di server-side mode
+    micBtn.textContent = "🎙️ Mikrofon";
+  }
 
+  // ================== MediaRecorder fallback (semua browser) ==================
+  let mediaRecorder   = null;
+  let recordStream    = null;
+  let recordTimeout   = null;
+  let chunks          = [];
 
-// Fungsi untuk menampilkan pesan di chat box
-function appendMessage(sender, message) {
-    const msgDiv = document.createElement('div');
-    msgDiv.classList.add(sender);
-    msgDiv.textContent = `${sender}: ${message}`;
-    chatBox.appendChild(msgDiv);
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-// Fungsi untuk mengirim perintah asisten ke Flask backend
-async function sendCommand(command) {
-    // const command = userInput.value.trim();
-    if (command === "") return;
-
-    appendMessage('Kamu', command);
-    // userInput.value = '';
-
+  async function startRecording() {
     try {
-        const response = await fetch('/send_command', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ command: command })
-        });
-        const data = await response.json();
-        appendMessage('Asisten', data.response);
+      recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // OPSIONAL: Jika ingin asisten bicara di browser
-        const synth = window.speechSynthesis;
-        if (synth) {
-            const utterance = new SpeechSynthesisUtterance(data.response);
-            utterance.lang = 'id-ID';
-            synth.speak(utterance);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+                       ? "audio/webm"
+                       : "audio/ogg";
+
+      mediaRecorder = new MediaRecorder(recordStream, { mimeType });
+      chunks = [];
+
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+
+      mediaRecorder.onstop = () => {
+        // Gabung chunk → Blob
+        const blob   = new Blob(chunks, { type: mimeType });
+        const reader = new FileReader();
+        reader.onloadend = () => socket.emit("audio_blob", reader.result);
+        reader.readAsDataURL(blob);
+
+        // Matikan mic benar-benar
+        if (recordStream) {
+          recordStream.getTracks().forEach(t => t.stop());
+          recordStream = null;
         }
+        clearTimeout(recordTimeout);
+        micBtn.textContent = "🎙️ Mikrofon";
+      };
 
-    } catch (error) {
-        console.error('Error:', error);
-        appendMessage('Asisten', 'Maaf, terjadi kesalahan saat berkomunikasi dengan server.');
+      mediaRecorder.start();
+
+      // Auto-stop setelah 4 detik
+      recordTimeout = setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      }, 4000);
+
+      micBtn.textContent = "🎙️ Mendengarkan";
+      appendMessage("Asisten", "Mendengarkan perintah (server-side)...");
+    } catch (err) {
+      appendMessage("Asisten", "Gagal akses mikrofon: " + err.message);
+      micBtn.textContent = "🎙️ Mikrofon";
     }
-}
+  }
 
-// --- Event listener untuk tombol Mikrofon (toggle) ---
-micBtn.addEventListener('click', () => {
-    if (isListening) {
-        stopListening();
-    } else {
-        startListening();
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    else if (recordStream) {
+      recordStream.getTracks().forEach(t => t.stop());
+      recordStream = null;
     }
-});
+    clearTimeout(recordTimeout);
+  }
 
-// --- Fungsionalitas Tambah URL ---
-addUrlBtn.addEventListener('click', async () => {
-    const name = urlNameInput.value.trim().toLowerCase();
-    const url = urlAddressInput.value.trim();
+  // ================== hasil STT server-side ==================
+  socket.on("stt_result", data => {
+    if (data.text) sendCommand(data.text);
+    else appendMessage("Asisten", "Maaf, tidak terdengar jelas.");
+  });
 
-    try {
-        const response = await fetch('/add_url', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name: name, url: url })
-        });
-        const data = await response.json();
-        urlFeedback.textContent = data.message;
-        urlFeedback.style.color = data.status === 'success' ? 'green' : 'red';
-
-        if (data.status === 'success') {
-            urlNameInput.value = '';
-            urlAddressInput.value = '';
-        }
-    } catch (error) {   
-        console.error('Error adding URL:', error);
-        urlFeedback.textContent = "Terjadi kesalahan saat menambahkan URL.";
-        urlFeedback.style.color = 'red';
+  // ================== kirim perintah ke Flask ==================
+  async function sendCommand(cmd) {
+    appendMessage("Kamu", cmd);
+    const res   = await fetch("/send_command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: cmd })
+    });
+    const json  = await res.json();
+    appendMessage("Asisten", json.response);
+    if (window.speechSynthesis) {
+      const utt = new SpeechSynthesisUtterance(json.response);
+      utt.lang  = "id-ID";
+      window.speechSynthesis.speak(utt);
     }
-});
+  }
 
+  // ================== UI Events ==================
+  micBtn.onclick = () => micBtn.textContent.includes("Mendengarkan") ? stopSTT() : startSTT();
 
-// Pesan sambutan awal saat halaman dimuat
-document.addEventListener('DOMContentLoaded', () => {
-    appendMessage('Asisten', 'Halo! Aku adalah asisten pribadimu berbasis web.');
-    appendMessage('Asisten', 'Silakan ketik atau ucapkan perintahmu. Klik tombol Mikrofon untuk mengaktifkan/menonaktifkan mode mendengarkan.');
+  addUrlBtn.onclick = async () => {
+    const name = urlNameInput.value.trim();
+    const url  = urlAddressInput.value.trim();
+    if (!name || !url) {
+      urlFeedback.textContent = "Nama dan URL harus diisi."; urlFeedback.style.color = "red";
+      return;
+    }
+    const res  = await fetch("/add_url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, url })
+    });
+    const json = await res.json();
+    urlFeedback.textContent = json.message;
+    urlFeedback.style.color = json.status === "success" ? "green" : "red";
+    if (json.status === "success") { urlNameInput.value = ""; urlAddressInput.value = ""; }
+  };
+
+  // ================== Pesan awal ==================
+  appendMessage("Asisten", "Halo! Aku asisten pribadimu berbasis web ✨");
+  appendMessage("Asisten", "Klik 🎙️ lalu ucapkan perintah. Mic otomatis berhenti setelah 4 detik.");
 });
